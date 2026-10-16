@@ -1,8 +1,9 @@
 """
 Userbot для офферов.
-Сообщения идут от твоего аккаунта.
+Код авторизации берётся из переменной окружения TELEGRAM_CODE.
 """
 
+import os
 import re
 import asyncio
 from telethon import TelegramClient, events, Button
@@ -11,10 +12,10 @@ API_ID = 37207588
 API_HASH = "dc2a827340e87161d8e45703ab3eb776"
 PHONE = "+61480837622"
 SESSION = "offer_session"
+TELEGRAM_CODE = os.environ.get("TELEGRAM_CODE", "")
 
 client = TelegramClient(SESSION, API_ID, API_HASH)
 
-# chat_id -> last offer message id
 last_offers = {}
 
 
@@ -61,7 +62,7 @@ async def cmd_offer(event):
         ]
     )
     last_offers[event.chat_id] = {"msg_id": msg.id, "gift": gift, "stars": gift["stars"]}
-    await event.delete()  # удаляем команду
+    await event.delete()
 
 
 @client.on(events.NewMessage(outgoing=True, pattern=r'(?i)^/price\s+(\d+)'))
@@ -114,8 +115,13 @@ async def on_callback(event):
 
 
 async def main():
-    await client.start(phone=PHONE)
-    print("Userbot запущен. Пиши /offer в любом чате.")
+    def code_callback():
+        if not TELEGRAM_CODE:
+            raise RuntimeError("Set TELEGRAM_CODE env var")
+        return TELEGRAM_CODE
+
+    await client.start(phone=PHONE, code_callback=code_callback)
+    print("Userbot запущен.")
     await client.run_until_disconnected()
 
 
