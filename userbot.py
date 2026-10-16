@@ -1,6 +1,6 @@
 """
-Userbot для офферов.
-Код авторизации берётся из переменной окружения TELEGRAM_CODE.
+Userbot. Не спамит кодами.
+Если TELEGRAM_CODE не задан — выходит без запроса.
 """
 
 import os
@@ -12,10 +12,9 @@ API_ID = 37207588
 API_HASH = "dc2a827340e87161d8e45703ab3eb776"
 PHONE = "+61480837622"
 SESSION = "offer_session"
-TELEGRAM_CODE = os.environ.get("TELEGRAM_CODE", "")
+TELEGRAM_CODE = os.environ.get("TELEGRAM_CODE", "").strip()
 
 client = TelegramClient(SESSION, API_ID, API_HASH)
-
 last_offers = {}
 
 
@@ -49,17 +48,13 @@ def build_offer(gift, stars, buyer="faqux"):
 
 @client.on(events.NewMessage(outgoing=True, pattern=r'(?i)^/offer'))
 async def cmd_offer(event):
-    text = event.raw_text
-    gift = parse_gift(text)
+    gift = parse_gift(event.raw_text)
     if not gift:
         await event.reply("Кинь: /offer https://t.me/nft/IceCream-201001 5000")
         return
-
     msg = await event.respond(
         build_offer(gift, gift["stars"]),
-        buttons=[
-            [Button.inline("✗ Отклонить", b"dec"), Button.inline("✓ Принять", b"acc")]
-        ]
+        buttons=[[Button.inline("✗ Отклонить", b"dec"), Button.inline("✓ Принять", b"acc")]]
     )
     last_offers[event.chat_id] = {"msg_id": msg.id, "gift": gift, "stars": gift["stars"]}
     await event.delete()
@@ -73,56 +68,51 @@ async def cmd_price(event):
     new_stars = int(m.group(1))
     data = last_offers.get(event.chat_id)
     if not data:
-        await event.reply("Нет активного оффера в этом чате")
+        await event.reply("Нет оффера")
         return
-
-    gift = data["gift"]
     try:
         await client.edit_message(
-            event.chat_id,
-            data["msg_id"],
-            build_offer(gift, new_stars),
-            buttons=[
-                [Button.inline("✗ Отклонить", b"dec"), Button.inline("✓ Принять", b"acc")]
-            ]
+            event.chat_id, data["msg_id"],
+            build_offer(data["gift"], new_stars),
+            buttons=[[Button.inline("✗ Отклонить", b"dec"), Button.inline("✓ Принять", b"acc")]]
         )
         data["stars"] = new_stars
         await event.delete()
     except Exception as e:
-        await event.reply(f"Не смог изменить: {e}")
+        await event.reply(str(e))
 
 
 @client.on(events.CallbackQuery)
 async def on_callback(event):
-    data = event.data
-    if data == b"dec":
+    if event.data == b"dec":
         await event.edit("Предложение отклонено.", buttons=None)
-        await event.answer("Отклонено")
-    elif data == b"acc":
+        await event.answer()
+    elif event.data == b"acc":
         info = last_offers.get(event.chat_id, {})
         stars = info.get("stars", 7000)
         gift_name = info.get("gift", {}).get("gift_name", "подарок")
         await event.edit(
-            f"Предложение о продаже {gift_name} успешно принято.\n\n"
-            f"Передайте подарок покупателю для зачисления {stars} Stars на ваш баланс.",
+            f"Предложение о продаже {gift_name} успешно принято.\n\nПередайте подарок покупателю для зачисления {stars} Stars.",
             buttons=[[Button.url("Передать", "https://t.me/faqux")]]
         )
-        await event.respond(
-            f"🎁 Подарок: {gift_name} успешно продан!\n\n"
-            f"• Передайте подарок покупателю для зачисления Stars."
-        )
-        await event.answer("Принято")
+        await event.respond(f"🎁 Подарок: {gift_name} успешно продан!")
+        await event.answer()
 
 
 async def main():
-    def code_callback():
-        if not TELEGRAM_CODE:
-            raise RuntimeError("Set TELEGRAM_CODE env var")
+    if not TELEGRAM_CODE:
+        print("TELEGRAM_CODE не задан. Выхожу без запроса кода.")
+        return
+
+    def code_cb():
         return TELEGRAM_CODE
 
-    await client.start(phone=PHONE, code_callback=code_callback)
-    print("Userbot запущен.")
-    await client.run_until_disconnected()
+    try:
+        await client.start(phone=PHONE, code_callback=code_cb)
+        print("Userbot запущен.")
+        await client.run_until_disconnected()
+    except Exception as e:
+        print(f"Ошибка входа: {e}")
 
 
 if __name__ == "__main__":
